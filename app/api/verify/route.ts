@@ -7,6 +7,9 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { validateMagicBytes, validateUrl, MAX_IMAGE_AUDIO_SIZE, MAX_VIDEO_SIZE } from "@/lib/validation";
 import { runPipeline, PipelineError } from "@/lib/pipeline";
 
+// Vercel serverless execution timeout: allow up to 60 seconds for multimodal analysis and search grounding
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   // ── 1. Auth check ─────────────────────────────────────────────────────────
   const authHeader = request.headers.get("Authorization");

@@ -33,6 +33,11 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# service account secrets & keys
+*adminsdk*.json
+*service-account*.json
+*.key
+
 # vercel
 .vercel
 
