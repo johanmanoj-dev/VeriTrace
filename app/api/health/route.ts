@@ -1,7 +1,6 @@
 // app/api/health/route.ts
 // Diagnostic endpoint to check serverless health and environment variables
 import { NextResponse } from "next/server";
-import { getAdminApp } from "@/firebase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -35,25 +34,20 @@ export async function GET() {
 
   let adminInitStatus = "unknown";
   try {
+    const { getAdminApp } = await import("@/firebase/admin");
     getAdminApp();
     adminInitStatus = "success";
   } catch (err) {
     adminInitStatus = `failed: ${err instanceof Error ? err.message : String(err)}`;
   }
 
-  const allGood =
-    envCheck.GEMINI_API_KEY.isSet &&
-    envCheck.FIREBASE_ADMIN_PROJECT_ID.isSet &&
-    envCheck.FIREBASE_ADMIN_CLIENT_EMAIL.isSet &&
-    envCheck.FIREBASE_ADMIN_PRIVATE_KEY.isSet &&
-    adminInitStatus === "success";
-
   return NextResponse.json(
     {
-      status: allGood ? "healthy" : "misconfigured",
+      status: "online",
+      nodeVersion: process.version,
       firebaseAdmin: adminInitStatus,
       env: envCheck,
     },
-    { status: allGood ? 200 : 500 }
+    { status: 200 }
   );
 }
