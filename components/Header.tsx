@@ -53,12 +53,14 @@ export function Header() {
           >
             Reports
           </Link>
-          <a
-            href="#how-it-works"
-            className="text-neutral-600 transition-colors hover:text-neutral-950"
+          <Link
+            href="/how-it-works"
+            className={`transition-colors hover:text-neutral-950 ${
+              pathname === "/how-it-works" ? "font-medium text-neutral-950" : "text-neutral-600"
+            }`}
           >
             How it works
-          </a>
+          </Link>
         </nav>
 
         {/* Right Nav Action */}

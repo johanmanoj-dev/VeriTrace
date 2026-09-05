@@ -24,6 +24,7 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
   const [optionsMenuOpen, setOptionsMenuOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const handleDelete = async () => {
     if (!user) return;
@@ -246,56 +247,56 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={report.sourceUrl || "/placeholder-evidence.jpg"}
+                    src={report.sourceUrl}
                     alt={report.title}
+                    onLoad={() => setImageLoaded(true)}
                     className="max-h-[380px] w-auto max-w-full rounded-md object-contain"
                     onError={(e) => {
+                      setImageLoaded(false);
                       e.currentTarget.style.display = "none";
                       const fallback = document.getElementById("media-evidence-fallback");
                       if (fallback) fallback.style.display = "flex";
                     }}
                   />
 
-                  {/* Fallback Graphic */}
+                  {/* Fallback Graphic (only shown if source image is unavailable) */}
                   <div
                     id="media-evidence-fallback"
-                    style={{ display: "none" }}
+                    style={{ display: report.sourceUrl ? "none" : "flex" }}
                     className="flex h-72 w-full flex-col items-center justify-center rounded-lg bg-neutral-900 text-center text-neutral-400 p-6"
                   >
-                    <div className="relative flex h-20 w-32 items-center justify-center rounded border border-neutral-700 bg-neutral-800">
-                      <span className="text-xs font-mono text-neutral-300">ANALYZED MEDIA</span>
-                      <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-600 text-[10px] font-bold text-white shadow">
-                        01
-                      </span>
-                      <span className="absolute -bottom-2 -left-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-600 text-[10px] font-bold text-white shadow">
-                        02
-                      </span>
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800 text-neutral-400 mb-3">
+                      <ExternalLink className="h-6 w-6" />
                     </div>
-                    <p className="mt-4 text-xs text-neutral-400">
-                      Multimodal examination verified with synthetic artifact indicators
+                    <span className="text-xs font-semibold text-neutral-300">MEDIA STREAM ANALYZED</span>
+                    <p className="mt-2 text-xs text-neutral-400 max-w-sm leading-relaxed">
+                      Image was analyzed in-memory via SHA-256 pipeline. To view thumbnails on future reports, upload new media.
                     </p>
                   </div>
                 </>
               )}
 
-              {/* Region overlay badges matching screenshot */}
+              {/* Region indicator dots - strictly shown over the loaded image */}
               {report.mediaType === "image" &&
-                report.indicators?.slice(0, 3).map((_, i) => (
-                  <div
+                imageLoaded &&
+                report.indicators?.slice(0, 3).map((ind, i) => (
+                  <button
+                    type="button"
                     key={i}
                     style={{
-                      top: i === 0 ? "35%" : i === 1 ? "60%" : "45%",
-                      left: i === 0 ? "42%" : i === 1 ? "68%" : "25%",
+                      top: i === 0 ? "35%" : i === 1 ? "58%" : "42%",
+                      left: i === 0 ? "40%" : i === 1 ? "65%" : "25%",
                     }}
-                    className={`absolute flex h-6 w-6 items-center justify-center rounded-full border border-white/40 text-[11px] font-bold text-white shadow-md transition-transform hover:scale-110 cursor-pointer ${
+                    className={`group absolute flex h-6 w-6 items-center justify-center rounded-full border border-white/60 text-[11px] font-bold text-white shadow-lg transition-transform hover:scale-125 focus:scale-125 focus:outline-none ${
                       selectedIndicatorIndex === i ? "bg-amber-500 ring-2 ring-white" : "bg-amber-700"
                     }`}
-                  onClick={() => setSelectedIndicatorIndex(i)}
-                  title={`Indicator ${i + 1}`}
-                >
-                  0{i + 1}
-                </div>
-              ))}
+                    onClick={() => setSelectedIndicatorIndex(i)}
+                    title={`Region 0${i + 1}: ${ind.type}`}
+                    aria-label={`Anomaly region 0${i + 1}: ${ind.type}`}
+                  >
+                    0{i + 1}
+                  </button>
+                ))}
             </div>
           </div>
 

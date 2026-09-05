@@ -2,11 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Reports: authenticated users can create; only the owner can read/update/delete
+    // Reports: authenticated owner can read; all writes are server-only via Admin SDK
     match /reports/{reportId} {
-      allow create: if request.auth != null;
-      allow read, update, delete: if request.auth != null
+      allow read: if request.auth != null
         && request.auth.uid == resource.data.userId;
+      allow write: if false;
     }
 
     // Cache: authenticated users can read (shared dedup cache)

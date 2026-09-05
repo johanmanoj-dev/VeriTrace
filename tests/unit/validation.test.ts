@@ -75,6 +75,12 @@ describe("lib/validation", () => {
 
       const internalIp = validateUrl("https://127.0.0.1/admin");
       expect(internalIp.valid).toBe(false);
+
+      const cloudMetadata = validateUrl("https://169.254.169.254/latest/meta-data/");
+      expect(cloudMetadata.valid).toBe(false);
+
+      const gcpMetadata = validateUrl("https://metadata.google.internal/computeMetadata/v1/");
+      expect(gcpMetadata.valid).toBe(false);
     });
 
     it("rejects malformed URLs", () => {

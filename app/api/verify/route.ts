@@ -109,8 +109,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const thumbnail = formData.get("thumbnail");
+    const previewUrl = typeof thumbnail === "string" && thumbnail.startsWith("data:image/") ? thumbnail : undefined;
+
     try {
-      const report = await runPipeline({ kind: "file", file, userId });
+      const report = await runPipeline({ kind: "file", file, userId, previewUrl });
       return NextResponse.json(
         { reportId: report.id, report },
         { status: 200, headers: rateLimitHeaders }

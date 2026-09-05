@@ -21,7 +21,7 @@ export class PipelineError extends Error {
 }
 
 export type PipelineInput =
-  | { kind: "file"; file: File; userId: string }
+  | { kind: "file"; file: File; userId: string; previewUrl?: string }
   | { kind: "url"; url: string; userId: string };
 
 // Max inline base64 size — 15 MB images stay inline, larger audio/video go to File API
@@ -30,7 +30,7 @@ const INLINE_SIZE_LIMIT = 15 * 1024 * 1024;
 /**
  * Runs the full verification pipeline for a file upload.
  */
-async function runFilePipeline(file: File, userId: string): Promise<VerificationReport> {
+async function runFilePipeline(file: File, userId: string, previewUrl?: string): Promise<VerificationReport> {
   // — Step 2: Validate magic bytes
   const headerBuffer = await file.slice(0, 32).arrayBuffer();
   const magic = validateMagicBytes(new Uint8Array(headerBuffer));
@@ -83,12 +83,19 @@ async function runFilePipeline(file: File, userId: string): Promise<Verification
           groundingSources: [],
         };
 
+  // Derive fallback thumbnail if small image and no previewUrl passed
+  let finalSourceUrl = previewUrl;
+  if (!finalSourceUrl && mediaType === "image" && bytes.length <= 600 * 1024) {
+    finalSourceUrl = `data:${mimeType};base64,${bytes.toString("base64")}`;
+  }
+
   // — Step 7: Build report
   const reportData = {
     userId,
     title: analysis.title,
     mediaType: mediaType as MediaType,
     mediaHash: hash,
+    sourceUrl: finalSourceUrl || undefined,
     mimeType,
     fileSize: file.size,
     assessment: analysis.assessment === "inconclusive" ? "inconclusive" : analysis.assessment,
@@ -249,7 +256,7 @@ Respond in JSON.
  */
 export async function runPipeline(input: PipelineInput): Promise<VerificationReport> {
   if (input.kind === "file") {
-    return runFilePipeline(input.file, input.userId);
+    return runFilePipeline(input.file, input.userId, input.previewUrl);
   }
   return runUrlPipeline(input.url, input.userId);
 }

@@ -156,17 +156,23 @@ export function validateUrl(rawUrl: string): { valid: boolean; error?: string; n
     return { valid: false, error: "Invalid domain name." };
   }
 
-  // Reject local/internal addresses (SSRF prevention)
+  // Reject local/internal addresses and cloud metadata services (SSRF prevention)
   const host = parsed.hostname.toLowerCase();
   if (
     host === "localhost" ||
+    host === "metadata.google.internal" ||
     host.endsWith(".local") ||
+    host.endsWith(".internal") ||
     host.startsWith("127.") ||
+    host.startsWith("169.254.") ||
     host.startsWith("192.168.") ||
     host.startsWith("10.") ||
-    host === "::1"
+    host.startsWith("0.0.") ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) ||
+    host === "::1" ||
+    host === "0.0.0.0"
   ) {
-    return { valid: false, error: "Internal or private network URLs are not allowed." };
+    return { valid: false, error: "Internal or cloud metadata URLs are not allowed." };
   }
 
   return { valid: true, normalizedUrl: parsed.toString() };

@@ -74,6 +74,41 @@ export function MediaDropzone() {
       const formData = new FormData();
       formData.append("file", file);
 
+      // Create compressed preview thumbnail for report view
+      if (file.type.startsWith("image/")) {
+        try {
+          const thumb = await new Promise<string | null>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement("canvas");
+                const MAX_WIDTH = 800;
+                const scale = Math.min(1, MAX_WIDTH / img.width);
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                const ctx = canvas.getContext("2d");
+                if (ctx) {
+                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                  resolve(canvas.toDataURL("image/jpeg", 0.75));
+                } else {
+                  resolve(null);
+                }
+              };
+              img.onerror = () => resolve(null);
+              img.src = ev.target?.result as string;
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+          });
+          if (thumb) {
+            formData.append("thumbnail", thumb);
+          }
+        } catch {
+          // Non-blocking thumbnail generation
+        }
+      }
+
       // Call verification endpoint
       const response = await fetch("/api/verify", {
         method: "POST",
