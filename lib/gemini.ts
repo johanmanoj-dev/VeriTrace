@@ -80,7 +80,11 @@ const ANALYSIS_RESPONSE_SCHEMA: ResponseSchema = {
       format: "enum",
       enum: ["likely_authentic", "likely_manipulated", "inconclusive"],
     },
-    confidence: { type: SchemaType.NUMBER },
+    confidence: {
+      type: SchemaType.NUMBER,
+      description:
+        "Forensic confidence score between 0.50 and 0.99 reflecting certainty. MUST be dynamically calculated based on indicator count and severity. NEVER output a default or static value like 0.70 or 0.72.",
+    },
     explanation: { type: SchemaType.STRING },
     indicators: {
       type: SchemaType.ARRAY,
@@ -107,8 +111,25 @@ const ANALYSIS_RESPONSE_SCHEMA: ResponseSchema = {
 // Prompt templates — named constants; all changes must be documented here
 // ---------------------------------------------------------------------------
 
+// Updated 2026-09-05: Confidence rubric enforcing dynamic scoring based on evidence
+// severity to eliminate LLM hedge collapse (0.72 default).
+const CONFIDENCE_SCORING_RUBRIC = `
+CONFIDENCE SCORING RULES (CRITICAL: Do NOT output a default or hedge score like 0.70 or 0.72):
+Dynamically calculate 'confidence' float (between 0.50 and 0.99) directly from forensic evidence:
+- 0.90 to 0.99 (Very High):
+  * For 'likely_manipulated': 2+ high-severity indicators (e.g., obvious generative smoothing, warped anatomy/fingers, impossible lighting/shadows).
+  * For 'likely_authentic': Pristine camera sensor noise (PRNU), consistent lens optics, natural micro-textures, zero synthetic anomalies.
+- 0.80 to 0.89 (High):
+  * For 'likely_manipulated': 1 high-severity or multiple medium-severity clear anomalies.
+  * For 'likely_authentic': Natural photographic details with only ordinary compression.
+- 0.65 to 0.79 (Moderate):
+  * Subtle or conflicting signs, heavy re-compression masking noise, or minor retouching.
+- 0.50 to 0.64 (Low / Ambiguous):
+  * Severe motion blur, low resolution, or conflicting signals (pairs with 'inconclusive').
+`;
+
 // Updated 2026-09-05: Structured forensic analysis with strict claim extraction
-// focusing on verifiable factual statements rather than opinion.
+// and dynamic confidence calculation rubric.
 const IMAGE_ANALYSIS_PROMPT = `
 You are a forensic media analyst with expertise in detecting synthetic, AI-generated, 
 and digitally manipulated images. Analyze this image thoroughly and systematically.
@@ -124,13 +145,15 @@ Examine these areas in order:
 
 For each detected issue, assign severity (low / medium / high) based on impact on authenticity.
 
+${CONFIDENCE_SCORING_RUBRIC}
+
 Extract any factual claims about real-world events, people, places, or dates that this image 
 appears to depict — these will be verified against external sources.
 
 Respond only with valid JSON matching the response schema.
 `.trim();
 
-// Updated 2026-09-05: Audio forensic focus on voice cloning and spectral anomalies
+// Updated 2026-09-05: Audio forensic focus on voice cloning and dynamic confidence rubric
 const AUDIO_ANALYSIS_PROMPT = `
 You are a forensic audio analyst. Analyze this audio recording for signs of synthetic generation, 
 voice cloning, splicing, or manipulation.
@@ -142,10 +165,12 @@ Examine:
 4. Splicing artifacts: abrupt cuts, unnatural transitions, phase discontinuities
 5. Emotional coherence: does the emotional tone match the content?
 
+${CONFIDENCE_SCORING_RUBRIC}
+
 Respond only with valid JSON matching the response schema.
 `.trim();
 
-// Updated 2026-09-05: Video forensic focus on temporal and deepfake signals
+// Updated 2026-09-05: Video forensic focus on temporal signals and dynamic confidence rubric
 const VIDEO_ANALYSIS_PROMPT = `
 You are a forensic video analyst specializing in deepfake and manipulation detection.
 
@@ -156,6 +181,8 @@ Examine:
 4. Eye behavior: blink rate, gaze direction plausibility
 5. Background stability: compression artifacts, warping near face boundaries
 6. Lighting continuity across frames
+
+${CONFIDENCE_SCORING_RUBRIC}
 
 Respond only with valid JSON matching the response schema.
 `.trim();
@@ -237,6 +264,60 @@ async function generateWithRetry(
 }
 
 /**
+ * Calibrates confidence score using detected forensic indicators to prevent
+ * LLM mode-collapse/hedging bias (e.g. repeated 0.72 default across all inputs).
+ */
+export function calibrateConfidence(
+  rawConfidence: number,
+  assessment: "likely_authentic" | "likely_manipulated" | "inconclusive",
+  indicators: Array<{ severity: "low" | "medium" | "high" }>
+): number {
+  if (assessment === "inconclusive") {
+    return Math.min(rawConfidence, 0.58);
+  }
+
+  const highCount = indicators.filter((i) => i.severity === "high").length;
+  const medCount = indicators.filter((i) => i.severity === "medium").length;
+  const lowCount = indicators.filter((i) => i.severity === "low").length;
+
+  let evidenceConfidence: number;
+
+  if (assessment === "likely_manipulated") {
+    if (highCount >= 2) {
+      evidenceConfidence = 0.93 + Math.min(0.05, (highCount - 2) * 0.02 + medCount * 0.01);
+    } else if (highCount === 1) {
+      evidenceConfidence = 0.86 + Math.min(0.07, medCount * 0.03 + lowCount * 0.01);
+    } else if (medCount >= 2) {
+      evidenceConfidence = 0.79 + Math.min(0.08, (medCount - 2) * 0.03 + lowCount * 0.01);
+    } else if (medCount === 1) {
+      evidenceConfidence = 0.71 + Math.min(0.05, lowCount * 0.02);
+    } else {
+      evidenceConfidence = 0.65;
+    }
+  } else {
+    // likely_authentic
+    if (indicators.length === 0) {
+      evidenceConfidence = 0.95; // Pristine natural media, zero anomalies
+    } else if (highCount === 0 && medCount === 0) {
+      evidenceConfidence = 0.89; // Only minor standard compression / benign noise
+    } else if (highCount === 0 && medCount <= 1) {
+      evidenceConfidence = 0.81;
+    } else {
+      evidenceConfidence = 0.68;
+    }
+  }
+
+  // If raw model output collapsed to default hedge (0.70 - 0.74), override with evidence calculation
+  if (rawConfidence >= 0.70 && rawConfidence <= 0.74) {
+    return Number(evidenceConfidence.toFixed(2));
+  }
+
+  // Otherwise, blend model confidence (35%) with evidence-derived score (65%)
+  const blended = 0.35 * rawConfidence + 0.65 * evidenceConfidence;
+  return Number(Math.min(0.99, Math.max(0.5, blended)).toFixed(2));
+}
+
+/**
  * Analyzes media inline (images) or via Gemini File API URI (audio/video).
  * Returns a validated AnalysisResult or throws with a descriptive error.
  */
@@ -277,7 +358,16 @@ export async function analyzeMedia(
     throw new Error(`Gemini analysis response failed Zod validation: ${parsed.error.message}`);
   }
 
-  return parsed.data;
+  const calibratedConfidence = calibrateConfidence(
+    parsed.data.confidence,
+    parsed.data.assessment,
+    parsed.data.indicators
+  );
+
+  return {
+    ...parsed.data,
+    confidence: calibratedConfidence,
+  };
 }
 
 /**
@@ -295,6 +385,8 @@ Examine:
 2. Whether there are factual claims that appear misleading or contextually wrong
 3. Any metadata or textual evidence of manipulation
 4. The credibility of the source domain
+
+${CONFIDENCE_SCORING_RUBRIC}
 
 Extract any verifiable factual claims about real-world events, people, or dates.
 
@@ -325,7 +417,16 @@ Respond only with valid JSON matching the response schema.
     throw new Error(`URL analysis Zod validation failed: ${parsed.error.message}`);
   }
 
-  return parsed.data;
+  const calibratedConfidence = calibrateConfidence(
+    parsed.data.confidence,
+    parsed.data.assessment,
+    parsed.data.indicators
+  );
+
+  return {
+    ...parsed.data,
+    confidence: calibratedConfidence,
+  };
 }
 
 // ---------------------------------------------------------------------------
