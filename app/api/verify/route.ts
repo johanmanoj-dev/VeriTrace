@@ -26,9 +26,11 @@ export async function POST(request: NextRequest) {
   try {
     const decoded = await adminAuth.verifyIdToken(idToken);
     userId = decoded.uid;
-  } catch {
+  } catch (authErr) {
+    console.error("[POST /api/verify] Token verification failed:", authErr);
+    const detail = authErr instanceof Error ? authErr.message : "Invalid authentication token";
     return NextResponse.json(
-      { error: "Unauthorized: Invalid authentication token" },
+      { error: `Authentication error: ${detail}` },
       { status: 401 }
     );
   }

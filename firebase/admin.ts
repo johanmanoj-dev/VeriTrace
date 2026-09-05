@@ -23,19 +23,44 @@ function getPrivateKey(): string {
   return key.replace(/\\n/g, "\n");
 }
 
-function initAdminApp(): App {
-  if (getApps().length > 0) return getApps()[0]!;
+let _adminApp: App | null = null;
 
-  return initializeApp({
+export function getAdminApp(): App {
+  if (_adminApp) return _adminApp;
+  if (getApps().length > 0) {
+    _adminApp = getApps()[0]!;
+    return _adminApp;
+  }
+
+  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+  const privateKey = getPrivateKey();
+
+  _adminApp = initializeApp({
     credential: cert({
-      projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-      privateKey: getPrivateKey(),
+      projectId,
+      clientEmail,
+      privateKey,
     }),
   });
+
+  return _adminApp;
 }
 
-const adminApp = initAdminApp();
+export const adminDb = new Proxy({} as ReturnType<typeof getFirestore>, {
+  get(_, prop) {
+    const app = getAdminApp();
+    const db = getFirestore(app);
+    const val = (db as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof val === "function" ? val.bind(db) : val;
+  },
+});
 
-export const adminDb = getFirestore(adminApp);
-export const adminAuth = getAuth(adminApp);
+export const adminAuth = new Proxy({} as ReturnType<typeof getAuth>, {
+  get(_, prop) {
+    const app = getAdminApp();
+    const auth = getAuth(app);
+    const val = (auth as unknown as Record<string | symbol, unknown>)[prop];
+    return typeof val === "function" ? val.bind(auth) : val;
+  },
+});
