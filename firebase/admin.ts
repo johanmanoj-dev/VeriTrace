@@ -6,11 +6,21 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 
 function getPrivateKey(): string {
-  const raw = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
-  if (!raw) throw new Error("FIREBASE_ADMIN_PRIVATE_KEY is not set");
-  // Strip surrounding quotes added by .env.local JSON.stringify
-  const stripped = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
-  return stripped.replace(/\\n/g, "\n");
+  let key = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
+  if (!key) throw new Error("FIREBASE_ADMIN_PRIVATE_KEY is not set in environment variables");
+
+  // Remove accidental variable name prefix if pasted with "FIREBASE_ADMIN_PRIVATE_KEY="
+  if (key.startsWith("FIREBASE_ADMIN_PRIVATE_KEY=")) {
+    key = key.replace(/^FIREBASE_ADMIN_PRIVATE_KEY=/, "");
+  }
+
+  // Strip surrounding quotes
+  key = key.trim();
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1);
+  }
+
+  return key.replace(/\\n/g, "\n");
 }
 
 function initAdminApp(): App {

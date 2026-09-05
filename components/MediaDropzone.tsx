@@ -65,17 +65,59 @@ export function MediaDropzone() {
       return;
     }
 
+    // Check file size against Vercel serverless limit (4.5 MB)
+    if (!file.type.startsWith("image/") && file.size > 4.5 * 1024 * 1024) {
+      setErrorMessage("File exceeds 4.5 MB. Direct uploads on the serverless tier must be under 4.5 MB. Please use URL mode or a smaller clip.");
+      return;
+    }
+
     setAnalyzedFileName(file.name);
     setIsAnalyzing(true);
     setAnalysisStep("validating");
 
     try {
+      // Compress large images (>4MB) client-side so they comfortably fit Vercel payload limits
+      let uploadFile = file;
+      if (file.type.startsWith("image/") && file.size > 4 * 1024 * 1024) {
+        try {
+          const bitmap = await createImageBitmap(file);
+          const canvas = document.createElement("canvas");
+          const MAX_DIM = 1920;
+          let { width, height } = bitmap;
+          if (width > MAX_DIM || height > MAX_DIM) {
+            if (width > height) {
+              height = Math.round((height * MAX_DIM) / width);
+              width = MAX_DIM;
+            } else {
+              width = Math.round((width * MAX_DIM) / height);
+              height = MAX_DIM;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(bitmap, 0, 0, width, height);
+            const blob = await new Promise<Blob | null>((resolve) =>
+              canvas.toBlob(resolve, "image/jpeg", 0.85)
+            );
+            if (blob) {
+              uploadFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+                type: "image/jpeg",
+              });
+            }
+          }
+        } catch {
+          // Non-blocking fallback
+        }
+      }
+
       const token = await user.getIdToken();
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", uploadFile);
 
       // Create compressed preview thumbnail for report view
-      if (file.type.startsWith("image/")) {
+      if (uploadFile.type.startsWith("image/")) {
         try {
           const thumb = await new Promise<string | null>((resolve) => {
             const reader = new FileReader();
@@ -99,7 +141,7 @@ export function MediaDropzone() {
               img.src = ev.target?.result as string;
             };
             reader.onerror = () => resolve(null);
-            reader.readAsDataURL(file);
+            reader.readAsDataURL(uploadFile);
           });
           if (thumb) {
             formData.append("thumbnail", thumb);
@@ -119,8 +161,21 @@ export function MediaDropzone() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to process media");
+        let errorMsg = `Server error (${response.status})`;
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.error || errorData.message || errorMsg;
+        } catch {
+          if (response.status === 413) {
+            errorMsg = "File is too large for Vercel serverless functions (limit 4.5 MB). Please use a smaller file or URL mode.";
+          } else {
+            const rawText = await response.text().catch(() => "");
+            if (rawText) {
+              errorMsg = `${errorMsg}: ${rawText.slice(0, 160)}`;
+            }
+          }
+        }
+        throw new Error(errorMsg);
       }
 
       const result = await response.json();
@@ -179,8 +234,17 @@ export function MediaDropzone() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to analyze URL");
+        let errorMsg = `Server error (${response.status})`;
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.error || errorData.message || errorMsg;
+        } catch {
+          const rawText = await response.text().catch(() => "");
+          if (rawText) {
+            errorMsg = `${errorMsg}: ${rawText.slice(0, 160)}`;
+          }
+        }
+        throw new Error(errorMsg);
       }
 
       const result = await response.json();
