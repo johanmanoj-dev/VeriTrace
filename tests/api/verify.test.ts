@@ -9,7 +9,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/firebase/admin", () => ({
   adminAuth: {
     verifyIdToken: vi.fn(async (token: string) => {
-      if (token === "valid-token") return { uid: "user-test-123" };
+      if (token.startsWith("valid-token")) return { uid: `user-${token}` };
       throw new Error("Invalid token");
     }),
   },
@@ -110,5 +110,56 @@ describe("POST /api/verify", () => {
     const body = await res.json();
     expect(body.reportId).toBe("rep-abc-123");
     expect(res.headers.get("X-RateLimit-Limit")).toBeDefined();
+  });
+
+  it("returns 429 with Retry-After and X-RateLimit headers when burst rate limit exceeded", async () => {
+    const burstToken = "valid-token-burst-test";
+    // Hit the 5-request burst limit
+    for (let i = 0; i < 5; i++) {
+      const req = new NextRequest("http://localhost:3000/api/verify", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${burstToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url: `https://example.com/page/${i}` }),
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+    }
+
+    // 6th request must be rejected with 429
+    const overLimitReq = new NextRequest("http://localhost:3000/api/verify", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${burstToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: "https://example.com/page/over-limit" }),
+    });
+
+    const res = await POST(overLimitReq);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBeDefined();
+    expect(res.headers.get("X-RateLimit-Limit")).toBe("5");
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("0");
+    const body = await res.json();
+    expect(body.error).toContain("Rate limit exceeded");
+  });
+
+  it("returns 400 for unsupported content-type", async () => {
+    const req = new NextRequest("http://localhost:3000/api/verify", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer valid-token-content",
+        "Content-Type": "text/plain",
+      },
+      body: "plain text payload",
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("Unsupported content type");
   });
 });

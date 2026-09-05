@@ -10,7 +10,7 @@
 [![Next.js 16](https://img.shields.io/badge/Next.js-16.3-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![Google Gemini](https://img.shields.io/badge/AI-Gemini%203.6%20Flash-4285F4?style=for-the-badge&logo=google)](https://ai.google.dev/)
 [![Firebase](https://img.shields.io/badge/Backend-Firebase%20%26%20Firestore-FFCA28?style=for-the-badge&logo=firebase)](https://firebase.google.com/)
-[![Tests](https://img.shields.io/badge/Tests-47%20Passing-brightgreen?style=for-the-badge&logo=vitest)](https://vitest.dev/)
+[![Tests](https://img.shields.io/badge/Tests-57%20Passing-brightgreen?style=for-the-badge&logo=vitest)](https://vitest.dev/)
 [![Accessibility](https://img.shields.io/badge/WCAG%202.1-AA%20Compliant-success?style=for-the-badge)](https://www.w3.org/WAI/WCAG21/quickref/)
 
 ---
@@ -123,7 +123,7 @@ The codebase boasts comprehensive test coverage across unit, integration, and en
 npm test
 ```
 
-### Test Suite Summary (47 Tests Passing across 7 Suites):
+### Test Suite Summary (57 Tests Passing across 7 Suites):
 * `tests/unit/validation.test.ts`: Magic byte identification, size caps, allowed MIME enforcement, URL sanitization.
 * `tests/unit/cache.test.ts`: Deterministic SHA-256 hash generation, Firestore cache hit/miss resolution.
 * `tests/unit/types.test.ts`: Zod schema bounds, severity constraints, and Gemini response schema validation.

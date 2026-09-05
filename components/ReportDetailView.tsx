@@ -121,15 +121,23 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
               type="button"
               onClick={() => setOptionsMenuOpen((prev) => !prev)}
               aria-label="More options"
+              aria-expanded={optionsMenuOpen}
+              aria-haspopup="menu"
               className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
             >
               <MoreHorizontal className="h-4 w-4" />
             </button>
 
             {optionsMenuOpen && (
-              <div className="absolute right-0 top-10 z-20 w-44 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg text-xs">
+              <div
+                role="menu"
+                aria-label="Report options"
+                className="absolute right-0 top-10 z-20 w-44 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg text-xs"
+                onKeyDown={(e) => { if (e.key === "Escape") setOptionsMenuOpen(false); }}
+              >
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => {
                     handleShare();
                     setOptionsMenuOpen(false);
@@ -142,6 +150,7 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
                 <div className="my-1 border-t border-neutral-100" />
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => {
                     setOptionsMenuOpen(false);
                     setDeleteModalOpen(true);
@@ -159,9 +168,14 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
 
       {/* Delete Confirmation Modal */}
       {deleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-modal-title"
+        >
           <div className="w-full max-w-sm rounded-xl border border-neutral-200 bg-white p-6 shadow-xl">
-            <h3 className="text-base font-semibold text-neutral-950">Delete Verification Report?</h3>
+            <h3 id="delete-modal-title" className="text-base font-semibold text-neutral-950">Delete Verification Report?</h3>
             <p className="mt-2 text-xs text-neutral-600">
               This action cannot be undone. The report and its analysis history will be permanently deleted.
             </p>
@@ -405,7 +419,12 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
 
       {/* Lightbox Modal */}
       {lightboxOpen && report.sourceUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Full media view"
+        >
           <button
             type="button"
             onClick={() => setLightboxOpen(false)}

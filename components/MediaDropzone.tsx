@@ -271,6 +271,15 @@ export function MediaDropzone() {
 
   return (
     <div className="w-full max-w-2xl sm:max-w-[720px] mx-auto">
+      {/* Accessible live region for status announcements */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {isAnalyzing
+          ? `Analyzing ${analyzedFileName || "media"}. Current step: ${analysisStep}.`
+          : errorMessage
+          ? `Error: ${errorMessage}`
+          : ""}
+      </div>
+
       {/* Upload Card */}
       <div
         className={`relative rounded-2xl border bg-white p-8 sm:p-10 shadow-sm transition-all duration-200 ${

@@ -1,56 +1,91 @@
-import { describe, it, expect } from "vitest";
+// tests/unit/rate-limit.test.ts
+// Unit tests for lib/rate-limit.ts sliding window rate limiter
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { checkRateLimit } from "@/lib/rate-limit";
 
-describe("lib/rate-limit", () => {
-  it("allows requests under the limit", () => {
-    const userId = "test-user-1";
-    const config = { maxRequests: 3, windowMs: 10000 };
+const TEST_CONFIG = { maxRequests: 3, windowMs: 60_000 };
 
-    const first = checkRateLimit(userId, "test", config);
-    expect(first.allowed).toBe(true);
-    if (first.allowed) {
-      expect(first.remaining).toBe(2);
-      expect(first.limit).toBe(3);
+describe("lib/rate-limit -- checkRateLimit", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("allows first request and returns remaining = maxRequests - 1", () => {
+    const result = checkRateLimit("user-rl-1", "test-key-a", TEST_CONFIG);
+    expect(result.allowed).toBe(true);
+    if (result.allowed) {
+      expect(result.remaining).toBe(2);
+      expect(result.limit).toBe(3);
     }
+  });
 
-    const second = checkRateLimit(userId, "test", config);
-    expect(second.allowed).toBe(true);
-    if (second.allowed) {
-      expect(second.remaining).toBe(1);
-    }
-
-    const third = checkRateLimit(userId, "test", config);
+  it("allows up to maxRequests within the window", () => {
+    const key = "test-key-b";
+    checkRateLimit("user-rl-2", key, TEST_CONFIG);
+    checkRateLimit("user-rl-2", key, TEST_CONFIG);
+    const third = checkRateLimit("user-rl-2", key, TEST_CONFIG);
     expect(third.allowed).toBe(true);
-    if (third.allowed) {
-      expect(third.remaining).toBe(0);
+  });
+
+  it("blocks when maxRequests is exceeded within window", () => {
+    const key = "test-key-c";
+    checkRateLimit("user-rl-3", key, TEST_CONFIG);
+    checkRateLimit("user-rl-3", key, TEST_CONFIG);
+    checkRateLimit("user-rl-3", key, TEST_CONFIG);
+    const fourth = checkRateLimit("user-rl-3", key, TEST_CONFIG);
+    expect(fourth.allowed).toBe(false);
+    if (!fourth.allowed) {
+      expect(fourth.retryAfter).toBeGreaterThan(0);
+      expect(fourth.limit).toBe(3);
     }
   });
 
-  it("blocks requests that exceed the limit", () => {
-    const userId = "test-user-2";
-    const config = { maxRequests: 2, windowMs: 5000 };
-
-    checkRateLimit(userId, "test2", config);
-    checkRateLimit(userId, "test2", config);
-
-    const third = checkRateLimit(userId, "test2", config);
-    expect(third.allowed).toBe(false);
-    if (!third.allowed) {
-      expect(third.retryAfter).toBeGreaterThan(0);
-      expect(third.limit).toBe(2);
+  it("resets window after windowMs elapses", () => {
+    const key = "test-key-d";
+    checkRateLimit("user-rl-4", key, TEST_CONFIG);
+    checkRateLimit("user-rl-4", key, TEST_CONFIG);
+    checkRateLimit("user-rl-4", key, TEST_CONFIG);
+    vi.advanceTimersByTime(TEST_CONFIG.windowMs + 1);
+    const after = checkRateLimit("user-rl-4", key, TEST_CONFIG);
+    expect(after.allowed).toBe(true);
+    if (after.allowed) {
+      expect(after.remaining).toBe(2);
     }
   });
 
-  it("isolates different users", () => {
-    const config = { maxRequests: 1, windowMs: 5000 };
+  it("isolates by userId", () => {
+    const key = "test-key-e";
+    checkRateLimit("user-rl-5", key, TEST_CONFIG);
+    checkRateLimit("user-rl-5", key, TEST_CONFIG);
+    checkRateLimit("user-rl-5", key, TEST_CONFIG);
+    expect(checkRateLimit("user-rl-5", key, TEST_CONFIG).allowed).toBe(false);
+    expect(checkRateLimit("user-rl-6", key, TEST_CONFIG).allowed).toBe(true);
+  });
 
-    const userA = checkRateLimit("user-a", "isolate", config);
-    expect(userA.allowed).toBe(true);
+  it("isolates by key (same user, different endpoints)", () => {
+    checkRateLimit("user-rl-7", "key-A", TEST_CONFIG);
+    checkRateLimit("user-rl-7", "key-A", TEST_CONFIG);
+    checkRateLimit("user-rl-7", "key-A", TEST_CONFIG);
+    expect(checkRateLimit("user-rl-7", "key-A", TEST_CONFIG).allowed).toBe(false);
+    expect(checkRateLimit("user-rl-7", "key-B", TEST_CONFIG).allowed).toBe(true);
+  });
 
-    const userB = checkRateLimit("user-b", "isolate", config);
-    expect(userB.allowed).toBe(true);
-
-    const userABlocked = checkRateLimit("user-a", "isolate", config);
-    expect(userABlocked.allowed).toBe(false);
+  it("429 blocked result includes positive retryAfter and future resetAt", () => {
+    const key = "test-key-f";
+    checkRateLimit("user-rl-8", key, TEST_CONFIG);
+    checkRateLimit("user-rl-8", key, TEST_CONFIG);
+    checkRateLimit("user-rl-8", key, TEST_CONFIG);
+    vi.advanceTimersByTime(10_000);
+    const blocked = checkRateLimit("user-rl-8", key, TEST_CONFIG);
+    expect(blocked.allowed).toBe(false);
+    if (!blocked.allowed) {
+      expect(blocked.retryAfter).toBeGreaterThan(0);
+      expect(blocked.resetAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    }
   });
 });

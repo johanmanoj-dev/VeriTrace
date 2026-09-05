@@ -63,7 +63,7 @@ export default function HowItWorksPage() {
             02
           </div>
           <h2 className="text-xl font-bold tracking-tight text-neutral-950">
-            Understand
+            Explain
           </h2>
           <p className="text-xs leading-relaxed text-neutral-600">
             Rather than a black-box percentage, VeriTrace breaks down the reasoning into

@@ -53,18 +53,18 @@ export default function HomePage() {
             {/* Step 02 */}
             <div>
               <p className="text-xs font-semibold text-neutral-400">02</p>
-              <h3 className="mt-2 text-base font-semibold text-neutral-950">Understand</h3>
+              <h3 className="mt-2 text-base font-semibold text-neutral-950">Explain</h3>
               <p className="mt-2 text-xs leading-relaxed text-neutral-600">
-                Explain the evidence behind the assessment in plain language.
+                Explain the evidence behind the assessment in plain, forensic language.
               </p>
             </div>
 
             {/* Step 03 */}
             <div>
               <p className="text-xs font-semibold text-neutral-400">03</p>
-              <h3 className="mt-2 text-base font-semibold text-neutral-950">Verify</h3>
+              <h3 className="mt-2 text-base font-semibold text-neutral-950">Verify &amp; Trace</h3>
               <p className="mt-2 text-xs leading-relaxed text-neutral-600">
-                Compare claims with external sources and trace relevant context.
+                Compare claims with external sources and trace relevant context back to primary evidence.
               </p>
             </div>
           </div>
