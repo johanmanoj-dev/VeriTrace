@@ -6,7 +6,7 @@
 import "server-only";
 import { computeHash, getCachedReportId, setCachedReportId } from "@/lib/cache";
 import { createReport, getReport } from "@/lib/firestore";
-import { analyzeMedia, analyzeWithGrounding, uploadToFileApi } from "@/lib/gemini";
+import { analyzeMedia, analyzeWithGrounding, uploadToFileApi, analyzeUrl } from "@/lib/gemini";
 import { validateMagicBytes } from "@/lib/validation";
 import type { VerificationReport, MediaType } from "@/lib/types";
 
@@ -149,94 +149,20 @@ async function runFilePipeline(file: File, userId: string, previewUrl?: string):
  * Runs the full verification pipeline for a URL submission.
  */
 async function runUrlPipeline(url: string, userId: string): Promise<VerificationReport> {
-  // For URLs, Gemini URL Context tool handles fetching — we send the URL as text
-  // and ask Gemini to analyze the page/media at that URL via its built-in URL context.
-  // No server-side URL fetch (SSRF prevention).
-
-  // — Step 5: Gemini analysis — specialized text-only call for URL context
-  const { GoogleGenerativeAI, SchemaType } = await import("@google/generative-ai");
-  const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-
-  const urlAnalysisSchema = {
-    type: SchemaType.OBJECT,
-    properties: {
-      title: { type: SchemaType.STRING },
-      assessment: {
-        type: SchemaType.STRING,
-        format: "enum",
-        enum: ["likely_authentic", "likely_manipulated", "inconclusive"],
-      },
-      confidence: { type: SchemaType.NUMBER },
-      explanation: { type: SchemaType.STRING },
-      indicators: {
-        type: SchemaType.ARRAY,
-        items: {
-          type: SchemaType.OBJECT,
-          properties: {
-            type: { type: SchemaType.STRING },
-            severity: { type: SchemaType.STRING, format: "enum", enum: ["low", "medium", "high"] },
-            explanation: { type: SchemaType.STRING },
-          },
-          required: ["type", "severity", "explanation"],
-        },
-      },
-      claims: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-    },
-    required: ["title", "assessment", "confidence", "explanation", "indicators", "claims"],
-  };
-
-  const urlModel = genai.getGenerativeModel({
-    model: "gemini-3.6-flash",
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: urlAnalysisSchema as import("@google/generative-ai").ResponseSchema,
-    },
-  });
-
-  const urlPrompt = `
-You are a forensic media and content analyst.
-
-Analyze the content available at this URL: ${url}
-
-Examine:
-1. Whether the content shows signs of manipulation, AI-generation, or being out-of-context
-2. Whether there are factual claims that appear misleading or contextually wrong
-3. Any metadata or textual evidence of manipulation
-4. The credibility of the source domain
-
-Extract any verifiable factual claims about real-world events, people, or dates.
-
-Respond in JSON.
-  `.trim();
-
-  const result = await urlModel.generateContent(urlPrompt);
-  const text = result.response.text().replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
-
-  let raw: unknown;
+  // — Step 5: Gemini analysis via centralized helper in lib/gemini.ts (handles retries & model fallback)
+  let analysis: import("@/lib/gemini").AnalysisResult;
   try {
-    raw = JSON.parse(text);
-  } catch {
-    throw new PipelineError("Gemini returned invalid JSON for URL analysis", 502);
+    analysis = await analyzeUrl(url);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("429") || msg.includes("quota") || msg.includes("Too Many Requests")) {
+      throw new PipelineError(
+        "Gemini AI rate limit reached (free tier quota). Please wait 30–60 seconds before submitting again.",
+        429
+      );
+    }
+    throw new PipelineError(`Gemini URL analysis failed: ${msg}`, 502);
   }
-
-  const { z } = await import("zod");
-  const UrlAnalysisSchema = z.object({
-    title: z.string().min(1),
-    assessment: z.enum(["likely_authentic", "likely_manipulated", "inconclusive"]),
-    confidence: z.number().min(0).max(1),
-    explanation: z.string().min(1),
-    indicators: z.array(
-      z.object({ type: z.string(), severity: z.enum(["low", "medium", "high"]), explanation: z.string() })
-    ).default([]),
-    claims: z.array(z.string()).default([]),
-  });
-
-  const parsed = UrlAnalysisSchema.safeParse(raw);
-  if (!parsed.success) {
-    throw new PipelineError(`URL analysis Zod validation failed: ${parsed.error.message}`, 502);
-  }
-
-  const analysis = parsed.data;
 
   // — Step 6: Grounding
   const grounding =

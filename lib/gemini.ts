@@ -183,6 +183,60 @@ function extractJsonFromResult(result: GenerateContentResult): unknown {
 }
 
 /**
+ * Executes generateContent with exponential backoff retry and automatic model fallback.
+ * Handles transient 503 (Service Unavailable / high demand), 429 (ResourceExhausted), and network errors.
+ */
+async function generateWithRetry(
+  getModel: (modelName: string) => ReturnType<GoogleGenerativeAI["getGenerativeModel"]>,
+  contents: Parameters<ReturnType<GoogleGenerativeAI["getGenerativeModel"]>["generateContent"]>[0],
+  maxRetriesPerModel = 2
+): Promise<GenerateContentResult> {
+  const candidateModels = [PRIMARY_MODEL, "gemini-3.5-flash", "gemini-2.5-flash"];
+
+  for (let mIdx = 0; mIdx < candidateModels.length; mIdx++) {
+    const modelName = candidateModels[mIdx];
+    const isLastModel = mIdx === candidateModels.length - 1;
+    const model = getModel(modelName);
+
+    for (let attempt = 0; attempt <= maxRetriesPerModel; attempt++) {
+      try {
+        return await model.generateContent(contents);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isTransient =
+          msg.includes("503") ||
+          msg.includes("high demand") ||
+          msg.includes("overloaded") ||
+          msg.includes("ResourceExhausted") ||
+          msg.includes("429");
+
+        const isLastAttempt = attempt === maxRetriesPerModel;
+
+        if (isTransient && !isLastAttempt) {
+          const backoff = 1000 * Math.pow(2, attempt);
+          console.warn(
+            `[Gemini] ${modelName} transient error (attempt ${attempt + 1}/${maxRetriesPerModel}): ${msg.slice(0, 80)}. Retrying in ${backoff}ms...`
+          );
+          await new Promise((r) => setTimeout(r, backoff));
+          continue;
+        }
+
+        if (isTransient && !isLastModel) {
+          console.warn(
+            `[Gemini] ${modelName} capacity exhausted after retries. Falling back to ${candidateModels[mIdx + 1]}...`
+          );
+          break; // break inner loop to try next model in candidateModels
+        }
+
+        throw err;
+      }
+    }
+  }
+
+  throw new Error("All Gemini models and retries exhausted.");
+}
+
+/**
  * Analyzes media inline (images) or via Gemini File API URI (audio/video).
  * Returns a validated AnalysisResult or throws with a descriptive error.
  */
@@ -192,14 +246,6 @@ export async function analyzeMedia(
     | { type: "fileUri"; uri: string; mimeType: string }, // Gemini File API
   mediaType: "image" | "audio" | "video"
 ): Promise<AnalysisResult> {
-  const model = genai.getGenerativeModel({
-    model: PRIMARY_MODEL,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: ANALYSIS_RESPONSE_SCHEMA,
-    },
-  });
-
   const prompt = getPromptForMediaType(mediaType);
 
   const part =
@@ -207,7 +253,17 @@ export async function analyzeMedia(
       ? { inlineData: { data: payload.data, mimeType: payload.mimeType } }
       : { fileData: { fileUri: payload.uri, mimeType: payload.mimeType } };
 
-  const result = await model.generateContent([prompt, part]);
+  const result = await generateWithRetry(
+    (modelName) =>
+      genai.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: ANALYSIS_RESPONSE_SCHEMA,
+        },
+      }),
+    [prompt, part]
+  );
 
   let raw: unknown;
   try {
@@ -219,6 +275,54 @@ export async function analyzeMedia(
   const parsed = AnalysisResultSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Gemini analysis response failed Zod validation: ${parsed.error.message}`);
+  }
+
+  return parsed.data;
+}
+
+/**
+ * Analyzes content at a public URL using Gemini's native URL context.
+ * Centralized in gemini.ts adhering to AGENTS.md rules.
+ */
+export async function analyzeUrl(url: string): Promise<AnalysisResult> {
+  const urlPrompt = `
+You are a forensic media and content analyst.
+
+Analyze the content available at this URL: ${url}
+
+Examine:
+1. Whether the content shows signs of manipulation, AI-generation, or being out-of-context
+2. Whether there are factual claims that appear misleading or contextually wrong
+3. Any metadata or textual evidence of manipulation
+4. The credibility of the source domain
+
+Extract any verifiable factual claims about real-world events, people, or dates.
+
+Respond only with valid JSON matching the response schema.
+  `.trim();
+
+  const result = await generateWithRetry(
+    (modelName) =>
+      genai.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: ANALYSIS_RESPONSE_SCHEMA,
+        },
+      }),
+    urlPrompt
+  );
+
+  let raw: unknown;
+  try {
+    raw = extractJsonFromResult(result);
+  } catch {
+    throw new Error("Gemini returned invalid JSON for URL analysis");
+  }
+
+  const parsed = AnalysisResultSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`URL analysis Zod validation failed: ${parsed.error.message}`);
   }
 
   return parsed.data;
@@ -298,14 +402,6 @@ const GROUNDING_RESPONSE_SCHEMA: ResponseSchema = {
  * Only called when analyzeMedia returns claims.length > 0.
  */
 async function verifyClaimsWithKnowledge(claims: string[]): Promise<GroundingResult> {
-  const model = genai.getGenerativeModel({
-    model: PRIMARY_MODEL,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: GROUNDING_RESPONSE_SCHEMA,
-    },
-  });
-
   const prompt = `
 You are a factual knowledge verification engine for a forensic media platform.
 
@@ -320,7 +416,26 @@ Evaluate:
 Respond in JSON matching the schema.
   `.trim();
 
-  const result = await model.generateContent(prompt);
+  let result: GenerateContentResult;
+  try {
+    result = await generateWithRetry(
+      (modelName) =>
+        genai.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: GROUNDING_RESPONSE_SCHEMA,
+          },
+        }),
+      prompt
+    );
+  } catch {
+    return {
+      contextVerdict: "contradicted",
+      contextEvidence: ["Claims could not be verified due to upstream model capacity; visual indicators preserved."],
+      groundingSources: [],
+    };
+  }
   let raw: unknown;
   try {
     raw = extractJsonFromResult(result);
@@ -362,12 +477,6 @@ export async function analyzeWithGrounding(claims: string[]): Promise<GroundingR
   }
 
   try {
-    const model = genai.getGenerativeModel({
-      model: PRIMARY_MODEL,
-      // googleSearchRetrieval is the correct tool name in SDK v0.24.x
-      tools: [{ googleSearchRetrieval: {} }],
-    });
-
     const groundingQuery = `
 Verify the following claims extracted from potentially manipulated or AI-generated media.
 
@@ -388,7 +497,15 @@ Based on your research, provide:
 Respond in JSON.
     `.trim();
 
-    const result = await model.generateContent(groundingQuery);
+    const result = await generateWithRetry(
+      (modelName) =>
+        genai.getGenerativeModel({
+          model: modelName,
+          // googleSearchRetrieval is the correct tool name in SDK v0.24.x
+          tools: [{ googleSearchRetrieval: {} }],
+        }),
+      groundingQuery
+    );
 
     // Extract grounding sources from SDK metadata (typed access)
     const candidates = result.response.candidates ?? [];
