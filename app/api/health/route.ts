@@ -13,8 +13,7 @@ export async function GET() {
   const envCheck = {
     GEMINI_API_KEY: {
       isSet: Boolean(geminiKey),
-      length: geminiKey?.length ?? 0,
-      prefix: geminiKey ? geminiKey.slice(0, 4) + "..." : "missing",
+      status: geminiKey ? "configured" : "missing",
     },
     FIREBASE_ADMIN_PROJECT_ID: {
       isSet: Boolean(projectId),
