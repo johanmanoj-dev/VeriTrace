@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# env — keep example, ignore everything else
+!.env.example
+
+# playwright
+/playwright-report/
+/test-results/
+
+# firebase
+firebase-debug.log
+.firebase/
