@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUpRight, ShieldCheck, MoreHorizontal, Copy, Check, ExternalLink, Trash2, X } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
@@ -10,7 +9,7 @@ import { IndicatorList } from "@/components/IndicatorList";
 import { ContextVerification } from "@/components/ContextVerification";
 import { SourceList } from "@/components/SourceList";
 import { ReportSidebar } from "@/components/ReportSidebar";
-import type { VerificationReport, Indicator } from "@/lib/types";
+import type { VerificationReport } from "@/lib/types";
 
 interface ReportDetailViewProps {
   report: VerificationReport;

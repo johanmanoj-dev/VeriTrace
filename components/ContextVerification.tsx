@@ -1,6 +1,5 @@
 "use client";
 
-import { Check, AlertCircle } from "lucide-react";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import type { ContextVerdict } from "@/lib/types";
 

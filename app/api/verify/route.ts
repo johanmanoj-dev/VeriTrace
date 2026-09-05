@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     console.error("[POST /api/verify] Token verification failed:", authErr);
     const detail = authErr instanceof Error ? authErr.message : "Invalid authentication token";
     return NextResponse.json(
-      { error: `Authentication error: ${detail}` },
+      { error: `Unauthorized: Invalid authentication token (${detail})` },
       { status: 401 }
     );
   }

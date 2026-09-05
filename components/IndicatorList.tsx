@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, ShieldAlert, X } from "lucide-react";
+import { ChevronRight, X } from "lucide-react";
 import type { Indicator } from "@/lib/types";
 
 interface IndicatorListProps {

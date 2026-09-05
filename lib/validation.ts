@@ -102,7 +102,6 @@ export function validateMagicBytes(buffer: Uint8Array): { valid: boolean; detect
  */
 export async function validateMediaFile(file: File): Promise<ValidationResult> {
   const isVideo = file.type.startsWith("video/") || file.name.endsWith(".mp4") || file.name.endsWith(".mov");
-  const isAudio = file.type.startsWith("audio/") || file.name.endsWith(".mp3") || file.name.endsWith(".wav");
 
   const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_AUDIO_SIZE;
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Upload, ShieldCheck, Search, Cpu, CheckCircle2 } from "lucide-react";
+import { Upload } from "lucide-react";
 
 export const metadata = {
   title: "How It Works — VeriTrace",

@@ -67,7 +67,7 @@ vi.mock("@/lib/validation", async (importOriginal) => {
 
 // ── Import after mocks ─────────────────────────────────────────────────────
 import { runPipeline } from "@/lib/pipeline";
-import { computeHash, getCachedReportId, setCachedReportId } from "@/lib/cache";
+import { getCachedReportId, setCachedReportId } from "@/lib/cache";
 import { createReport, getReport } from "@/lib/firestore";
 import { analyzeMedia, analyzeWithGrounding } from "@/lib/gemini";
 

@@ -153,18 +153,7 @@ async function runUrlPipeline(url: string, userId: string): Promise<Verification
   // and ask Gemini to analyze the page/media at that URL via its built-in URL context.
   // No server-side URL fetch (SSRF prevention).
 
-  // — Step 5: Gemini analysis — pass URL as inline text prompt extension
-  const model = "gemini-3.6-flash";
-  const urlPayload: Parameters<typeof analyzeMedia>[0] = {
-    type: "inline",
-    // We encode the URL as a data URI-style marker the prompt recognizes
-    // Real URL context uses Gemini's URL tool, simulated here as image type
-    // with a descriptive prompt that instructs Gemini to treat it as URL context.
-    data: Buffer.from(`URL_CONTEXT:${url}`).toString("base64"),
-    mimeType: "text/plain",
-  };
-
-  // For URL mode, we use a specialized text-only call
+  // — Step 5: Gemini analysis — specialized text-only call for URL context
   const { GoogleGenerativeAI, SchemaType } = await import("@google/generative-ai");
   const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -197,7 +186,7 @@ async function runUrlPipeline(url: string, userId: string): Promise<Verification
   };
 
   const urlModel = genai.getGenerativeModel({
-    model,
+    model: "gemini-3.6-flash",
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: urlAnalysisSchema as import("@google/generative-ai").ResponseSchema,

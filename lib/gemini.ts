@@ -6,7 +6,7 @@ import {
   type ResponseSchema,
 } from "@google/generative-ai";
 import { z } from "zod";
-import type { AssessmentVerdict, ContextVerdict, GroundingSource, Indicator } from "@/lib/types";
+import type { ContextVerdict, GroundingSource } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Client
@@ -21,7 +21,7 @@ const PRIMARY_MODEL = "gemini-3.6-flash";
 // Zod schemas — validate all Gemini output before use (never trust raw shape)
 // ---------------------------------------------------------------------------
 
-const IndicatorSchema = z.object({
+export const IndicatorSchema = z.object({
   type: z.string().min(1),
   severity: z.enum(["low", "medium", "high"]),
   explanation: z.string().min(1),
@@ -36,7 +36,7 @@ const IndicatorSchema = z.object({
     .optional(),
 });
 
-const AnalysisResultSchema = z.object({
+export const AnalysisResultSchema = z.object({
   assessment: z.enum(["likely_authentic", "likely_manipulated", "inconclusive"]),
   confidence: z.number().min(0).max(1),
   indicators: z.array(IndicatorSchema).default([]),
@@ -47,7 +47,7 @@ const AnalysisResultSchema = z.object({
 
 export type AnalysisResult = z.infer<typeof AnalysisResultSchema>;
 
-const GroundingResultSchema = z.object({
+export const GroundingResultSchema = z.object({
   contextVerdict: z.enum(["corroborated", "partially_verified", "contradicted", "insufficient_data"]),
   contextEvidence: z.array(z.string()).default([]),
   groundingSources: z

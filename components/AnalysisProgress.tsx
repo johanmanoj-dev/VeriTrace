@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Loader2, CheckCircle2, ShieldCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
@@ -20,7 +19,22 @@ const STEPS = [
 ];
 
 export function AnalysisProgress({ isOpen, currentStep = "validating", fileName }: AnalysisProgressProps) {
-  const [progressValue, setProgressValue] = useState(15);
+  const getProgressValue = (step: string) => {
+    switch (step) {
+      case "validating":
+        return 20;
+      case "analyzing":
+        return 50;
+      case "verifying":
+        return 75;
+      case "generating":
+        return 90;
+      case "done":
+        return 100;
+      default:
+        return 15;
+    }
+  };
 
   const getStepIndex = (step: string) => {
     switch (step) {
@@ -40,26 +54,7 @@ export function AnalysisProgress({ isOpen, currentStep = "validating", fileName 
   };
 
   const activeIndex = getStepIndex(currentStep);
-
-  useEffect(() => {
-    switch (currentStep) {
-      case "validating":
-        setProgressValue(20);
-        break;
-      case "analyzing":
-        setProgressValue(50);
-        break;
-      case "verifying":
-        setProgressValue(75);
-        break;
-      case "generating":
-        setProgressValue(90);
-        break;
-      case "done":
-        setProgressValue(100);
-        break;
-    }
-  }, [currentStep]);
+  const progressValue = getProgressValue(currentStep);
 
   return (
     <Dialog open={isOpen}>

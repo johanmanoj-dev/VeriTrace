@@ -4,7 +4,6 @@ import {
   validateUrl,
   validateMediaFile,
   MAX_IMAGE_AUDIO_SIZE,
-  MAX_VIDEO_SIZE,
 } from "@/lib/validation";
 
 describe("lib/validation", () => {
