@@ -1,26 +1,36 @@
+// app/api/verify/route.ts
+// POST /api/verify — main verification endpoint
+// Pipeline: Auth → Rate limit → Validate → runPipeline() → return report
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/firebase/admin";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { validateMagicBytes, validateUrl, MAX_IMAGE_AUDIO_SIZE, MAX_VIDEO_SIZE } from "@/lib/validation";
+import { runPipeline, PipelineError } from "@/lib/pipeline";
 
 export async function POST(request: NextRequest) {
-  // 1. Auth check
+  // ── 1. Auth check ─────────────────────────────────────────────────────────
   const authHeader = request.headers.get("Authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Unauthorized: Missing authentication token" }, { status: 401 });
+  if (!authHeader?.startsWith("Bearer ")) {
+    return NextResponse.json(
+      { error: "Unauthorized: Missing authentication token" },
+      { status: 401 }
+    );
   }
 
   const idToken = authHeader.split("Bearer ")[1];
-  let decodedToken;
+  let userId: string;
+
   try {
-    decodedToken = await adminAuth.verifyIdToken(idToken);
+    const decoded = await adminAuth.verifyIdToken(idToken);
+    userId = decoded.uid;
   } catch {
-    return NextResponse.json({ error: "Unauthorized: Invalid authentication token" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Unauthorized: Invalid authentication token" },
+      { status: 401 }
+    );
   }
 
-  const userId = decodedToken.uid;
-
-  // 2. Rate limiting check (Burst & Hourly)
+  // ── 2. Rate limiting (burst + hourly) ─────────────────────────────────────
   const burstCheck = checkRateLimit(userId, "verify:burst", RATE_LIMITS.verifyBurst);
   if (!burstCheck.allowed) {
     return NextResponse.json(
@@ -53,10 +63,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 3. Payload validation
-  const contentType = request.headers.get("content-type") || "";
+  const rateLimitHeaders = {
+    "X-RateLimit-Limit": burstCheck.limit.toString(),
+    "X-RateLimit-Remaining": burstCheck.remaining.toString(),
+    "X-RateLimit-Reset": burstCheck.resetAt.toString(),
+  };
+
+  // ── 3. Parse payload & run pipeline ───────────────────────────────────────
+  const contentType = request.headers.get("content-type") ?? "";
 
   if (contentType.includes("multipart/form-data")) {
+    // ── FILE UPLOAD ──
     let formData: FormData;
     try {
       formData = await request.formData();
@@ -69,76 +86,77 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No media file provided" }, { status: 400 });
     }
 
-    const isVideo = file.type.startsWith("video/") || file.name.endsWith(".mp4") || file.name.endsWith(".mov");
+    const isVideo =
+      file.type.startsWith("video/") ||
+      file.name.toLowerCase().endsWith(".mp4") ||
+      file.name.toLowerCase().endsWith(".mov");
     const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_AUDIO_SIZE;
 
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: `File size exceeds allowed limit (${isVideo ? "100MB" : "20MB"})` },
+        { error: `File size exceeds the ${isVideo ? "100MB" : "20MB"} limit.` },
         { status: 400 }
       );
     }
 
-    const fileBuffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(fileBuffer.slice(0, 32));
-    const magicValidation = validateMagicBytes(bytes);
-
-    if (!magicValidation.valid || !magicValidation.detectedMime) {
+    // Magic byte check (don't trust Content-Type header alone)
+    const headerSlice = await file.slice(0, 32).arrayBuffer();
+    const magic = validateMagicBytes(new Uint8Array(headerSlice));
+    if (!magic.valid) {
       return NextResponse.json(
-        { error: "Invalid file content or unsupported media format" },
+        { error: "Invalid file content or unsupported media type." },
         { status: 400 }
       );
     }
 
-    // Skeleton response for Phase 2; Phase 3 connects real pipeline
-    return NextResponse.json(
-      {
-        status: "validated",
-        mediaType: isVideo ? "video" : magicValidation.detectedMime.startsWith("audio/") ? "audio" : "image",
-        mimeType: magicValidation.detectedMime,
-        fileSize: file.size,
-        fileName: file.name,
-        message: "Media validated successfully. Pipeline ready for Phase 3 analysis.",
-      },
-      {
-        status: 200,
-        headers: {
-          "X-RateLimit-Limit": burstCheck.limit.toString(),
-          "X-RateLimit-Remaining": burstCheck.remaining.toString(),
-          "X-RateLimit-Reset": burstCheck.resetAt.toString(),
-        },
+    try {
+      const report = await runPipeline({ kind: "file", file, userId });
+      return NextResponse.json(
+        { reportId: report.id, report },
+        { status: 200, headers: rateLimitHeaders }
+      );
+    } catch (err) {
+      if (err instanceof PipelineError) {
+        return NextResponse.json({ error: err.message }, { status: err.statusCode, headers: rateLimitHeaders });
       }
-    );
-  } else if (contentType.includes("application/json")) {
-    let body;
+      console.error("[POST /api/verify] Unexpected pipeline error:", err instanceof Error ? err.message : String(err));
+      return NextResponse.json({ error: "Internal server error during analysis." }, { status: 500 });
+    }
+  }
+
+  if (contentType.includes("application/json")) {
+    // ── URL SUBMISSION ──
+    let body: unknown;
     try {
       body = await request.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const urlCheck = validateUrl(body?.url);
-    if (!urlCheck.valid || !urlCheck.normalizedUrl) {
-      return NextResponse.json({ error: urlCheck.error || "Invalid URL" }, { status: 400 });
+    const rawUrl = (body as Record<string, unknown>)?.url;
+    if (typeof rawUrl !== "string") {
+      return NextResponse.json({ error: "Missing or invalid 'url' field in request body." }, { status: 400 });
     }
 
-    return NextResponse.json(
-      {
-        status: "validated",
-        mediaType: "url",
-        sourceUrl: urlCheck.normalizedUrl,
-        message: "URL validated successfully. Pipeline ready for Phase 3 analysis.",
-      },
-      {
-        status: 200,
-        headers: {
-          "X-RateLimit-Limit": burstCheck.limit.toString(),
-          "X-RateLimit-Remaining": burstCheck.remaining.toString(),
-          "X-RateLimit-Reset": burstCheck.resetAt.toString(),
-        },
+    const urlCheck = validateUrl(rawUrl);
+    if (!urlCheck.valid || !urlCheck.normalizedUrl) {
+      return NextResponse.json({ error: urlCheck.error ?? "Invalid URL." }, { status: 400 });
+    }
+
+    try {
+      const report = await runPipeline({ kind: "url", url: urlCheck.normalizedUrl, userId });
+      return NextResponse.json(
+        { reportId: report.id, report },
+        { status: 200, headers: rateLimitHeaders }
+      );
+    } catch (err) {
+      if (err instanceof PipelineError) {
+        return NextResponse.json({ error: err.message }, { status: err.statusCode, headers: rateLimitHeaders });
       }
-    );
+      console.error("[POST /api/verify] Unexpected pipeline error:", err instanceof Error ? err.message : String(err));
+      return NextResponse.json({ error: "Internal server error during analysis." }, { status: 500 });
+    }
   }
 
-  return NextResponse.json({ error: "Unsupported content type" }, { status: 400 });
+  return NextResponse.json({ error: "Unsupported content type." }, { status: 400 });
 }
