@@ -57,9 +57,15 @@ export function SourceList({ sources }: SourceListProps) {
           const credibility = (source.credibility || "high").toUpperCase();
 
           return (
-            <div key={index} className="py-4 first:pt-0">
+            <a
+              key={index}
+              href={source.url || "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group block py-4 first:pt-0 transition-colors -mx-2 px-2 rounded-lg hover:bg-neutral-50"
+            >
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-neutral-950">
+                <h3 className="text-sm font-semibold text-neutral-950 group-hover:text-emerald-800 transition-colors">
                   {publisher}
                 </h3>
                 <span className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
@@ -68,27 +74,17 @@ export function SourceList({ sources }: SourceListProps) {
               </div>
 
               <div className="mt-1 flex items-center justify-between gap-4">
-                <p className="text-xs text-neutral-600 line-clamp-1">
+                <p className="text-xs text-neutral-600 line-clamp-1 group-hover:text-neutral-900 group-hover:underline">
                   {source.title || source.snippet}
                 </p>
-                {source.url && (
-                  <a
-                    href={source.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="shrink-0 text-neutral-400 transition-colors hover:text-neutral-950"
-                    aria-label={`Open source from ${publisher}`}
-                  >
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  </a>
-                )}
+                <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-neutral-400 group-hover:text-neutral-950 transition-colors" />
               </div>
 
               <p className="mt-1 text-[11px] text-neutral-400">
                 {publisher}
                 {source.publishedDate ? ` · ${source.publishedDate}` : ""}
               </p>
-            </div>
+            </a>
           );
         })}
       </div>

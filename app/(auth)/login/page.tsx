@@ -11,11 +11,13 @@ export default function LoginPage() {
     <main className="flex min-h-screen flex-col items-center justify-center px-4">
       <div className="w-full max-w-md space-y-8 text-center">
         {/* Logo / brand */}
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight">VeriTrace</h1>
-          <p className="text-muted-foreground">
-            Detect · Explain · Verify · Trace
-          </p>
+        <div className="flex flex-col items-center justify-center space-y-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.png"
+            alt="VeriTrace"
+            className="h-12 w-auto object-contain mx-auto"
+          />
         </div>
 
         {/* Description */}

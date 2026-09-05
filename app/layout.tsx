@@ -41,8 +41,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </main>
           <footer className="border-t border-neutral-200/80 bg-white py-6">
-            <div className="mx-auto flex max-w-6xl items-center justify-between px-6 text-xs text-neutral-500">
-              <span className="font-medium text-neutral-800">VeriTrace</span>
+            <div className="mx-auto flex max-w-7xl items-center justify-between px-6 lg:px-10 text-xs text-neutral-500">
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logo.png" alt="VeriTrace" className="h-5 w-auto object-contain opacity-85" />
+              </div>
               <span>AI detection is not proof. Review the evidence.</span>
             </div>
           </footer>

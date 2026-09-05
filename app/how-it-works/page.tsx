@@ -8,7 +8,7 @@ export const metadata = {
 
 export default function HowItWorksPage() {
   return (
-    <div className="mx-auto w-full max-w-5xl px-6 py-16">
+    <div className="mx-auto w-full max-w-7xl px-6 lg:px-10 py-16">
       {/* Header */}
       <div className="text-center">
         <p className="text-[11px] font-semibold tracking-[0.2em] text-neutral-500 uppercase">

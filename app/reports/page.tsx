@@ -42,7 +42,7 @@ export default function ReportsPage() {
 
   if (loading || fetching) {
     return (
-      <div className="mx-auto w-full max-w-5xl px-6 py-12 space-y-6">
+      <div className="mx-auto w-full max-w-7xl px-6 lg:px-10 py-12 space-y-6">
         <Skeleton className="h-6 w-32" />
         <Skeleton className="h-10 w-64" />
         <Skeleton className="h-4 w-48" />

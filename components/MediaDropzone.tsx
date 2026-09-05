@@ -206,10 +206,10 @@ export function MediaDropzone() {
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto">
+    <div className="w-full max-w-2xl sm:max-w-[720px] mx-auto">
       {/* Upload Card */}
       <div
-        className={`relative rounded-2xl border bg-white p-7 sm:p-9 shadow-sm transition-all duration-200 ${
+        className={`relative rounded-2xl border bg-white p-8 sm:p-10 shadow-sm transition-all duration-200 ${
           isDragging ? "border-neutral-950 ring-2 ring-neutral-950/10" : "border-neutral-200"
         }`}
       >

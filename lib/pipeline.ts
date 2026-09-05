@@ -71,17 +71,43 @@ async function runFilePipeline(file: File, userId: string, previewUrl?: string):
   }
 
   // — Step 5: Gemini multimodal analysis (one structured call)
-  const analysis = await analyzeMedia(payload, mediaType);
+  let analysis: Awaited<ReturnType<typeof analyzeMedia>>;
+  try {
+    analysis = await analyzeMedia(payload, mediaType);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("429") || msg.includes("quota") || msg.includes("Too Many Requests")) {
+      throw new PipelineError(
+        "Gemini AI rate limit reached (free tier quota). Please wait 30–60 seconds before submitting again.",
+        429
+      );
+    }
+    throw new PipelineError(`Gemini analysis failed: ${msg}`, 502);
+  }
 
-  // — Step 6: Google Search grounding (only when claims extracted)
-  const grounding =
-    analysis.claims.length > 0
-      ? await analyzeWithGrounding(analysis.claims)
-      : {
-          contextVerdict: "insufficient_data" as const,
-          contextEvidence: [] as string[],
-          groundingSources: [],
-        };
+  // — Step 6: Google Search grounding (non-fatal graceful degradation)
+  let grounding: {
+    contextVerdict: import("@/lib/types").ContextVerdict;
+    contextEvidence: string[];
+    groundingSources: import("@/lib/types").GroundingSource[];
+  } = {
+    contextVerdict: "insufficient_data",
+    contextEvidence: [],
+    groundingSources: [],
+  };
+
+  if (analysis.claims.length > 0) {
+    try {
+      grounding = await analyzeWithGrounding(analysis.claims);
+    } catch (gErr: unknown) {
+      console.warn("[Grounding warning] Grounding search skipped:", gErr instanceof Error ? gErr.message : gErr);
+      grounding = {
+        contextVerdict: "insufficient_data" as const,
+        contextEvidence: ["Grounding search quota reached or timed out; visual indicators preserved."],
+        groundingSources: [],
+      };
+    }
+  }
 
   // Derive fallback thumbnail if small image and no previewUrl passed
   let finalSourceUrl = previewUrl;

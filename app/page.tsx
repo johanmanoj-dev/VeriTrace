@@ -4,14 +4,14 @@ export default function HomePage() {
   return (
     <div className="flex flex-1 flex-col justify-between">
       {/* Top Hero + Dropzone Section */}
-      <section className="mx-auto w-full max-w-5xl px-6 pt-16 pb-20 text-center">
+      <section className="mx-auto w-full max-w-7xl px-6 lg:px-10 pt-16 pb-20 text-center">
         {/* Eyebrow */}
         <p className="text-[11px] font-semibold tracking-[0.2em] text-neutral-500 uppercase">
           Verify before you trust
         </p>
 
         {/* Headline */}
-        <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-neutral-950 sm:text-5xl lg:text-[52px] leading-[1.12]">
+        <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-neutral-950 sm:text-5xl lg:text-[58px] leading-[1.12]">
           Detect manipulation.
           <br />
           Understand the evidence.
@@ -20,7 +20,7 @@ export default function HomePage() {
         </h1>
 
         {/* Subtitle */}
-        <p className="mx-auto mt-5 max-w-xl text-[14.5px] leading-relaxed text-neutral-600">
+        <p className="mx-auto mt-5 max-w-2xl text-[15px] leading-relaxed text-neutral-600">
           Analyze potentially AI-generated or manipulated media using multimodal analysis and contextual sources.
         </p>
 
@@ -32,7 +32,7 @@ export default function HomePage() {
 
       {/* How it Works Section */}
       <section id="how-it-works" className="border-t border-neutral-200/80 bg-white py-16">
-        <div className="mx-auto max-w-5xl px-6">
+        <div className="mx-auto max-w-7xl px-6 lg:px-10">
           <p className="text-[11px] font-semibold tracking-[0.2em] text-neutral-500 uppercase">
             A clear chain of evidence
           </p>

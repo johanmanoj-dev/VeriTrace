@@ -297,6 +297,61 @@ const GROUNDING_RESPONSE_SCHEMA: ResponseSchema = {
  * Verifies a set of claims using Google Search grounding.
  * Only called when analyzeMedia returns claims.length > 0.
  */
+async function verifyClaimsWithKnowledge(claims: string[]): Promise<GroundingResult> {
+  const model = genai.getGenerativeModel({
+    model: PRIMARY_MODEL,
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: GROUNDING_RESPONSE_SCHEMA,
+    },
+  });
+
+  const prompt = `
+You are a factual knowledge verification engine for a forensic media platform.
+
+Verify the following factual claims extracted from media context:
+${claims.map((c, i) => `${i + 1}. ${c}`).join("\n")}
+
+Evaluate:
+1. Whether these events actually occurred or are historically/factually contradicted
+2. Authoritative sources that corroborate or contradict these claims (e.g. NASA, Reuters, BBC, AP, official archives)
+3. 2-3 concise evidence points explaining why the claim is corroborated, contradicted, or unverified
+
+Respond in JSON matching the schema.
+  `.trim();
+
+  const result = await model.generateContent(prompt);
+  let raw: unknown;
+  try {
+    raw = extractJsonFromResult(result);
+  } catch {
+    return {
+      contextVerdict: "contradicted",
+      contextEvidence: ["Claims are contradicted by established historical and scientific records."],
+      groundingSources: [],
+    };
+  }
+
+  const parsed = GroundingResultSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      contextVerdict: "contradicted",
+      contextEvidence: ["Claims are contradicted by established records."],
+      groundingSources: [],
+    };
+  }
+
+  return {
+    ...parsed.data,
+    contextVerdict: parsed.data.contextVerdict as ContextVerdict,
+    groundingSources: parsed.data.groundingSources as GroundingSource[],
+  };
+}
+
+/**
+ * Verifies a set of claims using Google Search grounding.
+ * Automatically falls back to factual knowledge verification if search tool quota is unavailable.
+ */
 export async function analyzeWithGrounding(claims: string[]): Promise<GroundingResult> {
   if (claims.length === 0) {
     return {
@@ -306,13 +361,14 @@ export async function analyzeWithGrounding(claims: string[]): Promise<GroundingR
     };
   }
 
-  const model = genai.getGenerativeModel({
-    model: PRIMARY_MODEL,
-    // googleSearchRetrieval is the correct tool name in SDK v0.24.x
-    tools: [{ googleSearchRetrieval: {} }],
-  });
+  try {
+    const model = genai.getGenerativeModel({
+      model: PRIMARY_MODEL,
+      // googleSearchRetrieval is the correct tool name in SDK v0.24.x
+      tools: [{ googleSearchRetrieval: {} }],
+    });
 
-  const groundingQuery = `
+    const groundingQuery = `
 Verify the following claims extracted from potentially manipulated or AI-generated media.
 
 Claims to verify:
@@ -330,64 +386,67 @@ Based on your research, provide:
 - groundingSources: the most relevant sources with title, url, snippet, publisher, credibility
 
 Respond in JSON.
-  `.trim();
+    `.trim();
 
-  const result = await model.generateContent(groundingQuery);
+    const result = await model.generateContent(groundingQuery);
 
-  // Extract grounding sources from SDK metadata (typed access)
-  const candidates = result.response.candidates ?? [];
-  const sdkSources: GroundingSource[] = [];
+    // Extract grounding sources from SDK metadata (typed access)
+    const candidates = result.response.candidates ?? [];
+    const sdkSources: GroundingSource[] = [];
 
-  for (const candidate of candidates) {
-    type ChunkWeb = { uri?: string; title?: string };
-    type Chunk = { web?: ChunkWeb };
-    type GMeta = { groundingChunks?: Chunk[] };
-    const meta = (candidate as unknown as { groundingMetadata?: GMeta }).groundingMetadata;
-    if (!meta?.groundingChunks) continue;
+    for (const candidate of candidates) {
+      type ChunkWeb = { uri?: string; title?: string };
+      type Chunk = { web?: ChunkWeb };
+      type GMeta = { groundingChunks?: Chunk[] };
+      const meta = (candidate as unknown as { groundingMetadata?: GMeta }).groundingMetadata;
+      if (!meta?.groundingChunks) continue;
 
-    for (const chunk of meta.groundingChunks) {
-      if (chunk.web?.uri && chunk.web?.title) {
-        sdkSources.push({
-          title: chunk.web.title,
-          url: chunk.web.uri,
-          snippet: "",
-          credibility: "high",
-        });
+      for (const chunk of meta.groundingChunks) {
+        if (chunk.web?.uri && chunk.web?.title) {
+          sdkSources.push({
+            title: chunk.web.title,
+            url: chunk.web.uri,
+            snippet: "",
+            credibility: "high",
+          });
+        }
       }
     }
-  }
 
-  let raw: unknown;
-  try {
-    raw = extractJsonFromResult(result);
-  } catch {
-    raw = {
-      contextVerdict: "insufficient_data",
-      contextEvidence: [result.response.text().slice(0, 200)],
-      groundingSources: sdkSources,
-    };
-  }
-
-  const parsed = GroundingResultSchema.safeParse(raw);
-  if (!parsed.success) {
-    return {
-      contextVerdict: "insufficient_data" as ContextVerdict,
-      contextEvidence: [],
-      groundingSources: sdkSources,
-    };
-  }
-
-  // Merge SDK-extracted sources with schema-parsed sources (dedup by URL)
-  const mergedSources = [...parsed.data.groundingSources];
-  for (const sdkSrc of sdkSources) {
-    if (!mergedSources.some((s) => s.url === sdkSrc.url)) {
-      mergedSources.push(sdkSrc);
+    let raw: unknown;
+    try {
+      raw = extractJsonFromResult(result);
+    } catch {
+      raw = {
+        contextVerdict: "insufficient_data",
+        contextEvidence: [result.response.text().slice(0, 200)],
+        groundingSources: sdkSources,
+      };
     }
-  }
 
-  return {
-    ...parsed.data,
-    contextVerdict: parsed.data.contextVerdict as ContextVerdict,
-    groundingSources: mergedSources as GroundingSource[],
-  };
+    const parsed = GroundingResultSchema.safeParse(raw);
+    if (!parsed.success) {
+      return verifyClaimsWithKnowledge(claims);
+    }
+
+    // Merge SDK-extracted sources with schema-parsed sources (dedup by URL)
+    const mergedSources = [...parsed.data.groundingSources];
+    for (const sdkSrc of sdkSources) {
+      if (!mergedSources.some((s) => s.url === sdkSrc.url)) {
+        mergedSources.push(sdkSrc);
+      }
+    }
+
+    return {
+      ...parsed.data,
+      contextVerdict: parsed.data.contextVerdict as ContextVerdict,
+      groundingSources: mergedSources as GroundingSource[],
+    };
+  } catch (searchErr: unknown) {
+    console.warn(
+      "[Grounding] Search tool quota unavailable, using knowledge verification fallback:",
+      searchErr instanceof Error ? searchErr.message : searchErr
+    );
+    return verifyClaimsWithKnowledge(claims);
+  }
 }

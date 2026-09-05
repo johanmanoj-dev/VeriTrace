@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, ShieldCheck, MoreHorizontal, Copy, Check, ExternalLink, Trash2 } from "lucide-react";
+import { ArrowUpRight, ShieldCheck, MoreHorizontal, Copy, Check, ExternalLink, Trash2, X } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { IndicatorList } from "@/components/IndicatorList";
@@ -25,6 +25,7 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const handleDelete = async () => {
     if (!user) return;
@@ -83,7 +84,7 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
     : "bg-neutral-600";
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-6 py-10">
+    <div className="mx-auto w-full max-w-7xl px-6 lg:px-10 py-10">
       {/* Top Breadcrumb & Actions */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -187,7 +188,10 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
       )}
 
       {/* Top 2-Column Card: Media Evidence + Assessment */}
-      <div className="mt-8 grid grid-cols-1 overflow-hidden rounded-xl border border-neutral-200/90 bg-white shadow-sm lg:grid-cols-12">
+      <div
+        id="media-evidence-container"
+        className="mt-8 grid grid-cols-1 overflow-hidden rounded-xl border border-neutral-200/90 bg-white shadow-sm lg:grid-cols-12 scroll-mt-8"
+      >
         {/* Left Col: Media Evidence (lg:col-span-7) */}
         <div className="flex flex-col border-b border-neutral-200/80 lg:border-r lg:border-b-0 lg:col-span-7">
           {/* Top header bar */}
@@ -200,23 +204,23 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
           </div>
 
           {/* Media preview area with region marker badges */}
-          <div className="relative flex flex-1 items-center justify-center bg-neutral-950/95 p-4 min-h-[340px]">
+          <div className="relative flex flex-1 items-center justify-center bg-neutral-950/95 p-4 sm:p-6 min-h-[420px]">
             {/* Ambient image backdrop */}
-            <div className="relative w-full max-h-[380px] overflow-hidden rounded-lg flex items-center justify-center">
+            <div className="relative w-full max-h-[460px] overflow-hidden rounded-lg flex items-center justify-center">
               {/* If image available */}
               {/* Render by MediaType */}
               {report.mediaType === "video" ? (
                 <div className="relative flex w-full flex-col items-center justify-center">
                   <video
                     controls
-                    className="max-h-[360px] w-full rounded-md object-contain bg-black"
+                    className="max-h-[420px] w-full rounded-md object-contain bg-black"
                     src={report.sourceUrl || undefined}
                   >
                     Your browser does not support the video tag.
                   </video>
                 </div>
               ) : report.mediaType === "audio" ? (
-                <div className="flex h-64 w-full flex-col items-center justify-center gap-4 rounded-lg bg-neutral-900 p-6 text-center">
+                <div className="flex h-72 w-full flex-col items-center justify-center gap-4 rounded-lg bg-neutral-900 p-6 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-800 text-neutral-300">
                     <span className="text-2xl font-mono">🔊</span>
                   </div>
@@ -226,7 +230,7 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
                   <p className="text-xs text-neutral-400">Audio waveform & spectral features analyzed</p>
                 </div>
               ) : report.mediaType === "url" ? (
-                <div className="flex h-64 w-full flex-col items-center justify-center gap-3 rounded-lg bg-neutral-900 p-6 text-center">
+                <div className="flex h-72 w-full flex-col items-center justify-center gap-3 rounded-lg bg-neutral-900 p-6 text-center">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-800 text-neutral-300">
                     <ExternalLink className="h-6 w-6" />
                   </div>
@@ -250,7 +254,7 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
                     src={report.sourceUrl}
                     alt={report.title}
                     onLoad={() => setImageLoaded(true)}
-                    className="max-h-[380px] w-auto max-w-full rounded-md object-contain"
+                    className="max-h-[450px] w-auto max-w-full rounded-md object-contain"
                     onError={(e) => {
                       setImageLoaded(false);
                       e.currentTarget.style.display = "none";
@@ -290,7 +294,11 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
                     className={`group absolute flex h-6 w-6 items-center justify-center rounded-full border border-white/60 text-[11px] font-bold text-white shadow-lg transition-transform hover:scale-125 focus:scale-125 focus:outline-none ${
                       selectedIndicatorIndex === i ? "bg-amber-500 ring-2 ring-white" : "bg-amber-700"
                     }`}
-                    onClick={() => setSelectedIndicatorIndex(i)}
+                    onClick={() => {
+                      setSelectedIndicatorIndex(i);
+                      const el = document.getElementById(`indicator-card-${i}`);
+                      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }}
                     title={`Region 0${i + 1}: ${ind.type}`}
                     aria-label={`Anomaly region 0${i + 1}: ${ind.type}`}
                   >
@@ -305,7 +313,12 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
             <span className="text-neutral-500">Detected regions highlighted</span>
             <button
               type="button"
-              className="inline-flex items-center gap-1 text-neutral-700 hover:text-neutral-950 font-medium"
+              onClick={() => {
+                if (report.sourceUrl) {
+                  setLightboxOpen(true);
+                }
+              }}
+              className="inline-flex items-center gap-1 text-neutral-700 hover:text-neutral-950 font-medium cursor-pointer transition-colors"
             >
               <span>View full media</span>
               <ArrowUpRight className="h-3 w-3" />
@@ -366,7 +379,12 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
         <div className="space-y-12 lg:col-span-8">
           <IndicatorList
             indicators={report.indicators || []}
-            onSelectIndicator={(_, idx) => setSelectedIndicatorIndex(idx)}
+            selectedIndicatorIndex={selectedIndicatorIndex}
+            onSelectIndicator={(_, idx) => {
+              setSelectedIndicatorIndex(idx);
+              const el = document.getElementById("media-evidence-container");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            }}
           />
 
           <ContextVerification
@@ -385,6 +403,32 @@ export function ReportDetailView({ report }: ReportDetailViewProps) {
           </div>
         </div>
       </div>
+
+      {/* Lightbox Modal */}
+      {lightboxOpen && report.sourceUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(false)}
+            className="absolute right-6 top-6 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors cursor-pointer"
+            aria-label="Close full media view"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <div className="max-h-[90vh] max-w-[90vw] overflow-hidden rounded-lg flex items-center justify-center">
+            {report.mediaType === "video" ? (
+              <video controls autoPlay className="max-h-[85vh] max-w-[90vw] rounded-lg" src={report.sourceUrl} />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={report.sourceUrl}
+                alt={report.title}
+                className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

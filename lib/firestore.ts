@@ -41,29 +41,43 @@ export async function getReport(reportId: string): Promise<VerificationReport | 
   } as VerificationReport;
 }
 
+function mapDocToReport(doc: FirebaseFirestore.DocumentSnapshot): VerificationReport {
+  const data = doc.data() || {};
+  return {
+    id: doc.id,
+    ...data,
+    createdAt:
+      data.createdAt && typeof data.createdAt.toDate === "function"
+        ? (data.createdAt.toDate() as Date).toISOString()
+        : (data.createdAt as string) || new Date().toISOString(),
+  } as VerificationReport;
+}
+
 /**
  * Returns all reports belonging to a user, ordered newest first.
- * Limit defaults to 50 — sufficient for hackathon scale.
+ * Limit defaults to 50 — includes resilient in-memory sort fallback.
  */
 export async function getUserReports(userId: string, limit = 50): Promise<VerificationReport[]> {
-  const snapshot = await adminDb
-    .collection("reports")
-    .where("userId", "==", userId)
-    .orderBy("createdAt", "desc")
-    .limit(limit)
-    .get();
+  try {
+    const snapshot = await adminDb
+      .collection("reports")
+      .where("userId", "==", userId)
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
 
-  return snapshot.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      createdAt:
-        data.createdAt && typeof data.createdAt.toDate === "function"
-          ? (data.createdAt.toDate() as Date).toISOString()
-          : (data.createdAt as string),
-    } as VerificationReport;
-  });
+    return snapshot.docs.map(mapDocToReport);
+  } catch {
+    // Resilient fallback: query without composite orderBy and sort in memory
+    const snapshot = await adminDb
+      .collection("reports")
+      .where("userId", "==", userId)
+      .get();
+
+    const reports = snapshot.docs.map(mapDocToReport);
+    reports.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return reports.slice(0, limit);
+  }
 }
 
 /**

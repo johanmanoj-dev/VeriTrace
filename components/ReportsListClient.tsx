@@ -69,7 +69,7 @@ export function ReportsListClient({ initialReports }: ReportsListClientProps) {
   };
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-6 py-12">
+    <div className="mx-auto w-full max-w-7xl px-6 lg:px-10 py-12">
       {/* Top Workspace Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>

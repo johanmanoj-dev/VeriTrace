@@ -122,8 +122,15 @@ export async function POST(request: NextRequest) {
       if (err instanceof PipelineError) {
         return NextResponse.json({ error: err.message }, { status: err.statusCode, headers: rateLimitHeaders });
       }
-      console.error("[POST /api/verify] Unexpected pipeline error:", err instanceof Error ? err.message : String(err));
-      return NextResponse.json({ error: "Internal server error during analysis." }, { status: 500 });
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("429") || msg.includes("quota") || msg.includes("Too Many Requests")) {
+        return NextResponse.json(
+          { error: "Gemini API rate limit reached (free tier quota). Please wait 30–60 seconds before submitting again." },
+          { status: 429, headers: rateLimitHeaders }
+        );
+      }
+      console.error("[POST /api/verify] Unexpected pipeline error:", msg);
+      return NextResponse.json({ error: `Analysis failed: ${msg.slice(0, 150)}` }, { status: 500 });
     }
   }
 
@@ -156,8 +163,15 @@ export async function POST(request: NextRequest) {
       if (err instanceof PipelineError) {
         return NextResponse.json({ error: err.message }, { status: err.statusCode, headers: rateLimitHeaders });
       }
-      console.error("[POST /api/verify] Unexpected pipeline error:", err instanceof Error ? err.message : String(err));
-      return NextResponse.json({ error: "Internal server error during analysis." }, { status: 500 });
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("429") || msg.includes("quota") || msg.includes("Too Many Requests")) {
+        return NextResponse.json(
+          { error: "Gemini API rate limit reached (free tier quota). Please wait 30–60 seconds before submitting again." },
+          { status: 429, headers: rateLimitHeaders }
+        );
+      }
+      console.error("[POST /api/verify] Unexpected pipeline error:", msg);
+      return NextResponse.json({ error: `Analysis failed: ${msg.slice(0, 150)}` }, { status: 500 });
     }
   }
 
